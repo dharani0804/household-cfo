@@ -28,4 +28,22 @@ describe("MCP server", () => {
     expect(result.structuredContent).toMatchObject({ month: "2026-10" });
     expect(result.content).toEqual([{ type: "text", text: expect.stringMatching(/^You've spent \$\d+/) }]);
   });
+
+    it("answers can_we_afford with a verdict", async () => {
+    const client = await connect();
+    const result = await client.callTool({
+      name: "can_we_afford",
+      arguments: { item: "soccer camp", amountUsd: 240, category: "kids" },
+    });
+    expect(result.structuredContent).toMatchObject({ verdict: "stretch" });
+  });
+
+  it("rejects a category that doesn't exist", async () => {
+    const client = await connect();
+    const result = await client.callTool({
+      name: "can_we_afford",
+      arguments: { item: "boat", amountUsd: 50, category: "yachts" },
+    });
+    expect(result.isError).toBe(true);
+  });
 });
