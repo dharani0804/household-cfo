@@ -78,3 +78,13 @@ export function auditSubscriptions(household: Household, today: Date): Subscript
 function joinNames(names: string[]): string {
   return names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
+/** Finds a subscription by name, ignoring case: Alexa may say "peloton app". */
+export function findSubscription(household: Household, name: string): Subscription | undefined {
+  const wanted = name.trim().toLowerCase();
+  return household.subscriptions.find((s) => s.name.toLowerCase() === wanted);
+}
+
+export function cancelSubscription(household: Household, subscription: Subscription): string {
+  household.subscriptions = household.subscriptions.filter((s) => s !== subscription);
+  return `Canceled ${subscription.name}. That saves ${formatUsd(subscription.monthly * 12)} a year.`;
+}
