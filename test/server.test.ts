@@ -46,4 +46,11 @@ describe("MCP server", () => {
     });
     expect(result.isError).toBe(true);
   });
+
+    it("logs an expense and remembers it for the budget", async () => {
+    const client = await connect();
+    await client.callTool({ name: "log_expense", arguments: { amountUsd: 200, category: "dining", merchant: "Party" } });
+    const budget = await client.callTool({ name: "budget_status", arguments: {} });
+    expect(budget.structuredContent).toMatchObject({ overBudget: ["dining"] });
+  });
 });

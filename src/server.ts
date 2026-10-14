@@ -4,6 +4,9 @@ import { CATEGORIES, type Household } from "./household.js";
 import { toCents } from "./money.js";
 import { summarizeBudget } from "./finance/budget.js";
 import { checkAffordability } from "./finance/affordability.js";
+import { recordExpense } from "./finance/expenses.js";
+import { splitBill } from "./finance/split.js";
+import { auditSubscriptions } from "./finance/subscriptions.js";
 
 /**
  * Everything the server needs from the outside world is passed in.
@@ -52,6 +55,65 @@ export function createServer({ household, clock }: ServerDeps): McpServer {
       return {
         content: [{ type: "text", text: check.speech }],
         structuredContent: { ...check },
+      };
+    },
+  );
+
+  server.registerTool(
+    "log_expense",
+    {
+      title: "Log an expense",
+      description: "Records money already spent, then says how that category stands. Warns near or over the budget.",
+      inputSchema: {
+        amountUsd: z.number().positive().max(100_000).describe("Amount spent in US dollars"),
+        category: z.enum(CATEGORIES).describe("Budget category"),
+        merchant: z.string().min(1).max(100).describe("Where the money was spent"),
+        memberId: z.string().optional().describe("Who spent it; defaults to the first adult"),
+      },
+      annotations: { readOnlyHint: false, idempotentHint: false },
+    },
+    async ({ amountUsd, category, merchant, memberId }) => {
+      const result = recordExpense(household, { amount: toCents(amountUsd), category, merchant, memberId }, clock());
+      return {
+        content: [{ type: "text", text: result.speech }],
+        structuredContent: { ...result },
+      };
+    },
+  );
+
+  server.registerTool(
+    "split_bill",
+    {
+      title: "Split a bill",
+      description: "Splits a bill evenly with an optional tip. The shares always add up to the total.",
+      inputSchema: {
+        amountUsd: z.number().positive().max(100_000).describe("Bill total in US dollars, before tip"),
+        people: z.array(z.string().min(1)).min(1).max(50).describe("Everyone sharing the bill, including the speaker"),
+        tipPercent: z.number().min(0).max(100).optional().describe("Tip as a percentage, e.g. 18"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ amountUsd, people, tipPercent }) => {
+      const result = splitBill(toCents(amountUsd), people, tipPercent);
+      return {
+        content: [{ type: "text", text: result.speech }],
+        structuredContent: { ...result },
+      };
+    },
+  );
+
+  server.registerTool(
+    "audit_subscriptions",
+    {
+      title: "Audit subscriptions",
+      description: "Finds subscriptions that are unused, overlapping or recently more expensive, and the yearly savings from canceling.",
+      annotations: { readOnlyHint: true },
+    },
+    async () => {
+      const audit = auditSubscriptions(household, clock());
+      return {
+        content: [{ type: "text", text: audit.speech }],
+        structuredContent: { ...audit },
       };
     },
   );
