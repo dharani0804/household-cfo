@@ -1,4 +1,3 @@
-
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -50,7 +49,10 @@ describe("HTTP server", () => {
     await monday.close();
 
     const thursday = await connect();
-    const result = await thursday.callTool({ name: "recall_decisions", arguments: {} });
+    const result = await thursday.callTool({
+      name: "can_we_afford",
+      arguments: { item: "Hulu subscription", amountUsd: 18, category: "subscriptions" },
+    });
     expect((result.content as { text: string }[])[0].text).toContain("No new subscriptions until December");
     await thursday.close();
   });

@@ -6,7 +6,6 @@ import { ActionGuard, type GuardOutcome } from "./guardrails/action-guard.js";
 import { summarizeBudget } from "./finance/budget.js";
 import { checkAffordability } from "./finance/affordability.js";
 import { recordExpense } from "./finance/expenses.js";
-import { splitBill } from "./finance/split.js";
 import { auditSubscriptions, cancelSubscription, findSubscription } from "./finance/subscriptions.js";
 import { describeDecisions, findRelatedDecisions, rememberDecision } from "./finance/decisions.js";
 
@@ -61,7 +60,8 @@ export function createServer({ household, clock, guards = createGuards(clock) }:
         "Household CFO manages one family's budget by voice. Read each tool's text answer aloud. " +
         "Purchases and cancellations need the user's confirmation. If a tool answers needs_confirmation, " +
         "ask the user its prompt, and only if they clearly agree, call the same tool again with the confirmationToken. " +
-        "When the family makes a money decision, save it with remember_decision.",
+        "When the family makes a money decision, save it with remember_decision. " +
+        "Saved decisions come back on their own in can_we_afford and the weekly_checkin prompt.",
     },
   );
 
@@ -102,65 +102,6 @@ export function createServer({ household, clock, guards = createGuards(clock) }:
       return {
         content: [{ type: "text", text: speech }],
         structuredContent: { ...check, speech, relatedDecisions: related },
-      };
-    },
-  );
-
-  server.registerTool(
-    "log_expense",
-    {
-      title: "Log an expense",
-      description: "Records money already spent, then says how that category stands. Warns near or over the budget.",
-      inputSchema: {
-        amountUsd: z.number().positive().max(100_000).describe("Amount spent in US dollars"),
-        category: z.enum(CATEGORIES).describe("Budget category"),
-        merchant: z.string().min(1).max(100).describe("Where the money was spent"),
-        memberId: z.string().optional().describe("Who spent it; defaults to the first adult"),
-      },
-      annotations: { readOnlyHint: false, idempotentHint: false },
-    },
-    async ({ amountUsd, category, merchant, memberId }) => {
-      const result = recordExpense(household, { amount: toCents(amountUsd), category, merchant, memberId }, clock());
-      return {
-        content: [{ type: "text", text: result.speech }],
-        structuredContent: { ...result },
-      };
-    },
-  );
-
-  server.registerTool(
-    "split_bill",
-    {
-      title: "Split a bill",
-      description: "Splits a bill evenly with an optional tip. The shares always add up to the total.",
-      inputSchema: {
-        amountUsd: z.number().positive().max(100_000).describe("Bill total in US dollars, before tip"),
-        people: z.array(z.string().min(1)).min(1).max(50).describe("Everyone sharing the bill, including the speaker"),
-        tipPercent: z.number().min(0).max(100).optional().describe("Tip as a percentage, e.g. 18"),
-      },
-      annotations: { readOnlyHint: true },
-    },
-    async ({ amountUsd, people, tipPercent }) => {
-      const result = splitBill(toCents(amountUsd), people, tipPercent);
-      return {
-        content: [{ type: "text", text: result.speech }],
-        structuredContent: { ...result },
-      };
-    },
-  );
-
-  server.registerTool(
-    "audit_subscriptions",
-    {
-      title: "Audit subscriptions",
-      description: "Finds subscriptions that are unused, overlapping or recently more expensive, and the yearly savings from canceling.",
-      annotations: { readOnlyHint: true },
-    },
-    async () => {
-      const audit = auditSubscriptions(household, clock());
-      return {
-        content: [{ type: "text", text: audit.speech }],
-        structuredContent: { ...audit },
       };
     },
   );
@@ -222,7 +163,9 @@ export function createServer({ household, clock, guards = createGuards(clock) }:
     "cancel_subscription",
     {
       title: "Cancel a subscription",
-      description: "Cancels one subscription. Always asks the user to confirm first.",
+      description:
+        "Cancels one subscription. Always asks the user to confirm first, and says why it's worth canceling " +
+        "(unused, overlapping or more expensive). If the name isn't found, suggests which ones to cancel.",
       inputSchema: {
         name: z.string().min(1).max(100).describe("Subscription name, e.g. 'Disney+'"),
         confirmationToken,
@@ -230,20 +173,24 @@ export function createServer({ household, clock, guards = createGuards(clock) }:
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
     },
     async ({ name, confirmationToken }) => {
+      // The audit runs behind the scenes: it explains why a cancellation makes sense.
+      const audit = auditSubscriptions(household, clock());
       const subscription = findSubscription(household, name);
       if (!subscription) {
+        const suggestion = audit.suggestedCancellations.length > 0 ? ` ${audit.speech}` : "";
         return {
-          content: [{ type: "text", text: `I couldn't find a subscription called ${name}.` }],
-          structuredContent: { status: "not_found" },
+          content: [{ type: "text", text: `I couldn't find a subscription called ${name}.${suggestion}` }],
+          structuredContent: { status: "not_found", suggestedCancellations: audit.suggestedCancellations },
         };
       }
+      const reasons = audit.findings.filter((f) => f.name === subscription.name).map((f) => f.detail);
 
       const outcome = await guards.cancellations.check(
         server.server,
         {
           kind: "cancellation",
           amount: subscription.monthly,
-          summary: `Cancel ${subscription.name}, which costs ${formatUsd(subscription.monthly)} a month?`,
+          summary: [`Cancel ${subscription.name}, which costs ${formatUsd(subscription.monthly)} a month?`, ...reasons].join(" "),
           details: { name: subscription.name },
         },
         confirmationToken,
@@ -284,43 +231,37 @@ export function createServer({ household, clock, guards = createGuards(clock) }:
     },
   );
 
-  server.registerTool(
-    "recall_decisions",
-    {
-      title: "Recall family decisions",
-      description: "Lists money decisions the family made earlier, optionally about one topic.",
-      inputSchema: { topic: z.string().max(100).optional().describe("A topic like 'subscriptions'; leave out for all") },
-      annotations: { readOnlyHint: true },
-    },
-    async ({ topic }) => {
-      const decisions = topic ? findRelatedDecisions(household, topic) : household.decisions;
-      return {
-        content: [{ type: "text", text: describeDecisions(household, decisions) }],
-        structuredContent: { decisions },
-      };
-    },
-  );
-
   server.registerPrompt(
     "weekly_checkin",
     {
       title: "Weekly money check-in",
-      description: "A short spoken review of the week: budget, subscriptions and past family decisions.",
+      description: "A short spoken review of the week: budget, subscriptions worth canceling and past family decisions.",
     },
-    () => ({
-      messages: [
-        {
-          role: "user",
-          content: {
-            type: "text",
-            text:
-              "Run our weekly money check-in. Call recall_decisions, budget_status and audit_subscriptions. " +
-              "Then give a spoken summary under 60 words: one win, one thing to watch, and one suggested action. " +
-              "Offer to do the action, but never buy or cancel anything without asking first.",
+    () => {
+      // The server gathers the facts itself, so the model doesn't need extra tools to fetch them.
+      const today = clock();
+      const budget = summarizeBudget(household, today);
+      const audit = auditSubscriptions(household, today);
+      const decisions = household.decisions.length > 0 ? describeDecisions(household, household.decisions) : "None yet.";
+      return {
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text:
+                "Run our weekly money check-in using these facts.\n" +
+                `Budget: ${budget.speech}\n` +
+                `Subscriptions: ${audit.speech}\n` +
+                `Family decisions: ${decisions}\n` +
+                "Give a spoken summary under 60 words: one win, one thing to watch, and one suggested action. " +
+                "If a subscription is worth canceling, offer to cancel it with cancel_subscription, " +
+                "and never buy or cancel anything without asking first.",
+            },
           },
-        },
-      ],
-    }),
+        ],
+      };
+    },
   );
 
   return server;

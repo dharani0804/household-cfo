@@ -27,18 +27,16 @@ describe("family memory", () => {
     expect(textOf(result)).toContain("Remember, on 2026-10-13 you decided: No new subscriptions until December.");
   });
 
-  it("recalls decisions by topic", async () => {
+  it("builds the weekly check-in from live data", async () => {
     const client = await connect();
-    await client.callTool({ name: "remember_decision", arguments: { text: "Cap eating out at twice a week", tags: ["dining"] } });
-    const result = await client.callTool({ name: "recall_decisions", arguments: { topic: "dining" } });
-    expect(textOf(result)).toBe("On 2026-10-13, Dharani decided: Cap eating out at twice a week.");
-  });
-
-  it("offers the weekly check-in prompt", async () => {
-    const client = await connect();
+    await client.callTool({ name: "remember_decision", arguments: { text: "Cap eating out at twice a week" } });
     const { prompts } = await client.listPrompts();
     expect(prompts.map((p) => p.name)).toContain("weekly_checkin");
+
     const prompt = await client.getPrompt({ name: "weekly_checkin" });
-    expect(prompt.messages[0].content).toMatchObject({ type: "text", text: expect.stringContaining("recall_decisions") });
+    const text = (prompt.messages[0].content as { text: string }).text;
+    expect(text).toContain("Budget: You've spent");
+    expect(text).toContain("Canceling Disney+ and Peloton App");
+    expect(text).toContain("Dharani decided: Cap eating out at twice a week.");
   });
 });

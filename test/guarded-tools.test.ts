@@ -76,12 +76,15 @@ describe("cancel_subscription", () => {
   it("always confirms, even for a cheap subscription", async () => {
     const { household, call, prompts } = await connect({ action: "accept" });
     expect(await call("cancel_subscription", { name: "peloton app" })).toMatchObject({ status: "canceled" });
-    expect(prompts[0]).toBe("Cancel Peloton App, which costs $24 a month?");
+    expect(prompts[0]).toBe("Cancel Peloton App, which costs $24 a month? Not used in 74 days.");
     expect(household.subscriptions.some((s) => s.name === "Peloton App")).toBe(false);
   });
 
-  it("says so when the subscription doesn't exist", async () => {
+  it("suggests what to cancel when the name isn't found", async () => {
     const { call } = await connect({ action: "accept" });
-    expect(await call("cancel_subscription", { name: "Hulu" })).toMatchObject({ status: "not_found" });
+    expect(await call("cancel_subscription", { name: "Hulu" })).toMatchObject({
+      status: "not_found",
+      suggestedCancellations: ["Disney+", "Peloton App"],
+    });
   });
 });
