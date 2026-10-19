@@ -5,6 +5,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createHttpApp } from "../src/http.js";
 import { createDemoHousehold } from "../src/household.js";
+import { MemoryStore } from "../src/store.js";
 
 const today = new Date("2026-10-13T12:00:00Z");
 let httpServer: Server;
@@ -12,7 +13,7 @@ let url: URL;
 
 // Starts the real HTTP server on a free port (port 0), like it runs in production.
 beforeAll(async () => {
-  const app = createHttpApp({ host: "127.0.0.1", household: createDemoHousehold(today), clock: () => today });
+  const app = createHttpApp({ host: "127.0.0.1", store: new MemoryStore(createDemoHousehold(today)), clock: () => today });
   httpServer = await new Promise<Server>((resolve) => {
     const s = app.listen(0, "127.0.0.1", () => resolve(s));
   });

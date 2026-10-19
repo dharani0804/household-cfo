@@ -2,22 +2,26 @@
 //
 // Each client gets its own MCP session, identified by the `mcp-session-id` header.
 // Sessions are kept open so the server can ask for confirmation in the middle of a
-// tool call. The household and guards are shared by every session, so a decision
-// saved in one conversation is there in the next.
+// tool call. Each new session loads the household from the store, and every change
+// is saved back, so a decision saved in one conversation is there in the next.
 
 import { randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
-import { type ServerDeps, createGuards, createServer } from "./server.js";
+import { type Guards, createGuards, createServer } from "./server.js";
+import type { HouseholdStore } from "./store.js";
 
-export interface HttpOptions extends ServerDeps {
+export interface HttpOptions {
   /** "127.0.0.1" for your laptop. A container sets "0.0.0.0" so outside traffic can reach it. */
   host: string;
+  store: HouseholdStore;
+  clock: () => Date;
+  guards?: Guards;
 }
 
-export function createHttpApp({ host, household, clock, guards = createGuards(clock) }: HttpOptions): Express {
+export function createHttpApp({ host, store, clock, guards = createGuards(clock) }: HttpOptions): Express {
   const sessions = new Map<string, StreamableHTTPServerTransport>();
   // Turns on DNS rebinding protection when bound to localhost.
   const app = createMcpExpressApp({ host });
@@ -47,7 +51,9 @@ export function createHttpApp({ host, household, clock, guards = createGuards(cl
       if (transport.sessionId) sessions.delete(transport.sessionId);
     };
 
-    await createServer({ household, clock, guards }).connect(transport);
+    const household = await store.load();
+    const server = createServer({ household, clock, guards, persist: (changed) => store.save(changed) });
+    await server.connect(transport);
     await transport.handleRequest(req, res, req.body);
   });
 

@@ -8,6 +8,12 @@
       "Resource": "arn:aws:ecr:REGION:ACCOUNT_ID:repository/household-cfo"
     },
     {
+      "Sid": "HouseholdTable",
+      "Effect": "Allow",
+      "Action": ["dynamodb:GetItem", "dynamodb:PutItem"],
+      "Resource": "arn:aws:dynamodb:REGION:ACCOUNT_ID:table/household-cfo"
+    },
+    {
       "Sid": "EcrLogin",
       "Effect": "Allow",
       "Action": "ecr:GetAuthorizationToken",

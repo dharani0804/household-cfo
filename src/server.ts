@@ -17,6 +17,8 @@ export interface ServerDeps {
   household: Household;
   clock: () => Date;
   guards?: Guards;
+  /** Called after a tool changes the household, so it can be saved. */
+  persist?: (household: Household) => Promise<void>;
 }
 
 export interface Guards {
@@ -52,7 +54,9 @@ function describeOutcome(outcome: Exclude<GuardOutcome, { status: "approved" }>,
   }
 }
 
-export function createServer({ household, clock, guards = createGuards(clock) }: ServerDeps): McpServer {
+const doNotPersist = async () => {};
+
+export function createServer({ household, clock, guards = createGuards(clock), persist = doNotPersist }: ServerDeps): McpServer {
   const server = new McpServer(
     { name: "household-cfo", title: "Household CFO", version: "0.1.0" },
     {
@@ -151,6 +155,7 @@ export function createServer({ household, clock, guards = createGuards(clock) }:
       }
 
       const result = recordExpense(household, { amount, category, merchant: merchant ?? item, memberId }, clock());
+      await persist(household);
       const speech = `Done. I bought the ${item} for ${formatUsd(amount)}. ${category} has ${formatUsd(result.status.remaining)} left this month.`;
       return {
         content: [{ type: "text", text: speech }],
@@ -203,6 +208,7 @@ export function createServer({ household, clock, guards = createGuards(clock) }:
       }
 
       const speech = cancelSubscription(household, subscription);
+      await persist(household);
       return {
         content: [{ type: "text", text: speech }],
         structuredContent: { status: "canceled", name: subscription.name, via: outcome.via },
@@ -224,6 +230,7 @@ export function createServer({ household, clock, guards = createGuards(clock) }:
     },
     async ({ text, tags, memberId }) => {
       const decision = rememberDecision(household, { text, tags, memberId }, clock());
+      await persist(household);
       return {
         content: [{ type: "text", text: `Got it. I'll remember: ${decision.text}.` }],
         structuredContent: { decision },
