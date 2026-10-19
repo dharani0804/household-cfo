@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Household CFO on Alexa+</title>
+<style>
+  
+:root { --bg: #0b1220; --screen: #111a2e; --panel: #18233d; --text: #e8eefc; --muted: #93a3c4;
+          
+--ring: #34c3ff; --yes: #3ecf8e; --stretch: #f5b942; --no: #ff6b6b; }
+  * 
+{ box-sizing: border-box; }
+  
+body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+         
+font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+         
+display: flex; flex-direction: column; align-items: center; gap: 20px; padding: 24px 16px; }
+  
+h1 { font-size: 15px; font-weight: 600; color: var(--muted); margin: 0; letter-spacing: .04em; }
+  
+/* The Echo Show: a 16:10 screen in a dark bezel, with Alexa's light bar along the bottom. */
+  
+.device { width: min(960px, 100%); background: #05080f; border-radius: 28px; padding: 18px; box-shadow: 0 20px 60px #0008; }
+  
+.screen { position: relative; aspect-ratio: 16 / 10; background: var(--screen); border-radius: 14px; overflow: hidden;
+            
+display: grid; grid-template-columns: 1fr 1.1fr; }
+  
+.speech { padding: 32px; display: flex; flex-direction: column; justify-content: flex-end; gap: 12px; overflow: hidden; }
+  
+.you { color: var(--muted); font-size: 15px; }
+  
+.alexa { font-size: clamp(18px, 2.4vw, 26px); font-weight: 500; }
+  
+.card { margin: 24px; background: var(--panel); border-radius: 14px; padding: 24px; overflow: auto; display: flex; flex-direction: column; gap: 14px; }
+  
+.card h2 { margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  
+.big { font-size: clamp(26px, 3.6vw, 40px); font-weight: 700; }
+  
+.row { display: grid; grid-template-columns: 110px 1fr 70px; align-items: center; gap: 10px; font-size: 14px; }
+  
+.bar { height: 8px; background: #ffffff14; border-radius: 4px; overflow: hidden; }
+  
+.bar > span { display: block; height: 100%; background: var(--yes); }
+  
+.bar > span.warn { background: var(--stretch); } .bar > span.over { background: var(--no); }
+  
+.badge { align-self: flex-start; padding: 4px 12px; border-radius: 999px; font-weight: 700; font-size: 14px; color: #08101f; }
+  
+.badge.yes { background: var(--yes); } .badge.stretch { background: var(--stretch); } .badge.no { background: var(--no); }
+  
+.muted { color: var(--muted); font-size: 14px; }
+  
+ul { margin: 0; padding-left: 18px; }
+  
+.lightbar { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: var(--ring); opacity: 0; transition: opacity .3s; }
+  
+.listening .lightbar, .thinking .lightbar { opacity: 1; }
+  
+.thinking .lightbar { animation: pulse 1s ease-in-out infinite; }
+  
+@keyframes pulse { 50% { opacity: .35; } }
+  
+.controls { width: min(960px, 100%); display: flex; gap: 10px; }
+  
+.controls input { flex: 1; min-width: 0; padding: 14px 16px; border-radius: 12px; border: 1px solid #ffffff22; background: var(--panel); color: var(--text); font-size: 16px; }
+  
+button { padding: 0 18px; border-radius: 12px; border: 0; font-size: 16px; font-weight: 600; cursor: pointer; background: var(--panel); color: var(--text); }
+  
+button.mic { background: var(--ring); color: #08101f; }
+  
+.listening button.mic { background: var(--no); }
+  
+.hint { color: var(--muted); font-size: 13px; width: min(960px, 100%); }
+  
+@media (max-width: 700px) { .screen { grid-template-columns: 1fr; aspect-ratio: auto; } .card { margin: 0 16px 24px; } }
+</style>
+</head>
+<body>
+  
+<h1>HOUSEHOLD CFO · ALEXA+ SIMULATOR</h1>
+  
+<div class="device" id="device">
+    
+<div class="screen">
+      
+<div class="speech">
+        
+<div class="you" id="you">Try: "How are we doing on our budget?"</div>
+        
+<div class="alexa" id="alexa">Hi! Ask me about the family's money.</div>
+      
+</div>
+      
+<div class="card" id="card"><h2>Household CFO</h2><div class="muted">Cards for budgets, purchases and subscriptions show up here.</div></div>
+      
+<div class="lightbar"></div>
+    
+</div>
+  
+</div>
+  
+<form class="controls" id="form">
+    
+<button type="button" class="mic" id="mic" title="Talk to Alexa">🎤 Talk</button>
+    
+<input id="text" placeholder="Or type what you'd say to Alexa…" autocomplete="off">
+    
+<button type="submit">Send</button>
+    
+<button type="button" id="reset" title="Start a new conversation">New</button>
+  
+</form>
+  
+<p class="hint" id="hint">The mic uses your browser's speech recognition (Chrome or Safari).</p>
+<script>
+const $ = (id) => document.getElementById(id);
+const device = $("device");
+const usd = (cents) => (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: cents % 100 ? 2 : 0 });
+// Small DOM helper: el("div", { class: "x" }, "text", child). Text is always set as text, never as HTML.
+function el(tag, attrs = {}, ...children) {
+  
+const node = document.createElement(tag);
+  
+for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  
+for (const c of children) node.append(c);
+  
+return node;
+}
+// One drawing function per tool. Anything else gets a plain card.
+const cards = {
+  
+budget_status(d) {
+    
+const top = [...d.categories].filter((c) => c.budget > 0).sort((a, b) => b.percentUsed - a.percentUsed).slice(0, 5);
+    
+return [
+      
+el("h2", {}, `Budget · ${d.month}`),
+      
+el("div", { class: "big" }, `${usd(d.totalSpent)} `, el("span", { class: "muted" }, `of ${usd(d.totalBudget)}`)),
+      
+...top.map((c) => el("div", { class: "row" },
+        
+c.category,
+        
+el("div", { class: "bar" }, el("span", { class: c.percentUsed > 100 ? "over" : c.percentUsed >= 80 ? "warn" : "", style: `width:${Math.min(c.percentUsed, 100)}%` })),
+        
+`${c.percentUsed}%`)),
+    
+];
+  
+},
+  
+can_we_afford(d) {
+    
+return [
+      
+el("h2", {}, "Can we afford it?"),
+      
+el("div", { class: "big" }, `${d.request.item} · ${usd(d.request.amount)}`),
+      
+el("span", { class: `badge ${d.verdict}` }, { yes: "Yes", stretch: "Stretch", no: "No" }[d.verdict] ?? d.verdict),
+      
+el("ul", {}, ...d.reasons.map((r) => el("li", {}, r))),
+    
+];
+  
+},
+  
+make_purchase(d) {
+    
+if (d.status === "needs_confirmation") return [el("h2", {}, "Confirm purchase"), el("div", { class: "big" }, d.prompt), el("div", { class: "muted" }, 'Say "yes" to buy or "no" to skip.')];
+    
+if (d.status === "purchased") return [el("h2", {}, "Purchased"), el("div", { class: "big" }, `${d.transaction.merchant} · ${usd(d.transaction.amount)}`), el("div", { class: "muted" }, `${d.category.category}: ${usd(d.category.remaining)} left`)];
+    
+return [el("h2", {}, "Purchase"), el("div", { class: "big" }, d.status.replace("_", " ")), d.reason ? el("div", { class: "muted" }, d.reason) : ""];
+  
+},
+  
+cancel_subscription(d) {
+    
+if (d.status === "needs_confirmation") return [el("h2", {}, "Confirm cancellation"), el("div", { class: "big" }, d.prompt)];
+    
+if (d.status === "canceled") return [el("h2", {}, "Canceled"), el("div", { class: "big" }, d.name)];
+    
+if (d.status === "not_found") return [el("h2", {}, "Worth canceling"), el("ul", {}, ...d.suggestedCancellations.map((n) => el("li", {}, n)))];
+    
+return [el("h2", {}, "Subscription"), el("div", { class: "big" }, d.status)];
+  
+},
+  
+remember_decision(d) {
+    
+return [el("h2", {}, "Family decision saved"), el("div", { class: "big" }, `“${d.decision.text}”`), el("div", { class: "muted" }, d.decision.date)];
+  
+},
+};
+function showCard(card) {
+  
+if (!card) return;
+  
+const draw = cards[card.tool];
+  
+let parts;
+  
+try { parts = draw ? draw(card.data) : null; } catch { parts = null; }
+  
+$("card").replaceChildren(...(parts ?? [el("h2", {}, card.tool.replaceAll("_", " ")), el("pre", { class: "muted" }, JSON.stringify(card.data, null, 2))]));
+}
+function speak(text) {
+  
+speechSynthesis.cancel();
+  
+speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+}
+async function ask(text) {
+  
+$("you").textContent = `“${text}”`;
+  
+$("alexa").textContent = "…";
+  
+device.className = "device thinking";
+  
+try {
+    
+const res = await fetch("/api/ask", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) });
+    
+const reply = await res.json();
+    
+$("alexa").textContent = reply.speech ?? reply.error;
+    
+showCard(reply.card);
+    
+speak(reply.speech ?? reply.error);
+  
+} catch {
+    
+$("alexa").textContent = "I can't reach the simulator server. Is it still running?";
+  
+} finally {
+    
+device.className = "device";
+  
+}
+}
+$("form").addEventListener("submit", (e) => {
+  
+e.preventDefault();
+  
+const text = $("text").value.trim();
+  
+if (text) { $("text").value = ""; ask(text); }
+});
+$("reset").addEventListener("click", async () => {
+  
+await fetch("/api/reset", { method: "POST" });
+  
+$("you").textContent = "New conversation.";
+  
+$("alexa").textContent = "Hi! Ask me about the family's money.";
+});
+// Voice in: the browser's speech recognition turns what you say into text.
+const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (!Recognition) {
+  
+$("mic").disabled = true;
+  
+$("hint").textContent = "This browser has no speech recognition. Type instead, or open the page in Chrome or Safari.";
+} else {
+  
+const recognition = new Recognition();
+  
+recognition.lang = "en-US";
+  
+recognition.interimResults = true;
+  
+recognition.onstart = () => { speechSynthesis.cancel(); device.className = "device listening"; $("you").textContent = "Listening…"; };
+  
+recognition.onresult = (e) => {
+    
+const result = e.results[e.results.length - 1];
+    
+$("you").textContent = `“${result[0].transcript}”`;
+    
+if (result.isFinal) ask(result[0].transcript);
+  
+};
+  
+recognition.onerror = (e) => { $("hint").textContent = `Mic error: ${e.error}. You can type instead.`; };
+  
+recognition.onend = () => { if (device.className.includes("listening")) device.className = "device"; };
+  
+$("mic").addEventListener("click", () => recognition.start());
+}
+</script>
+</body>
+</html>

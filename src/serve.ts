@@ -24,5 +24,4 @@ const app = createHttpApp({ host, store, clock });
 app.listen(port, host, () => {
   console.log(`Household CFO MCP server listening on http://${host}:${port}/mcp`);
   console.log(tableName ? `Saving data to DynamoDB table ${tableName}` : "Keeping data in memory (set TABLE_NAME to use DynamoDB)");
-});
-
+})
