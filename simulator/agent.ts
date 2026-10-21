@@ -37,7 +37,18 @@ export interface AlexaReply {
 
 const ALEXA_STYLE =
   "You are Alexa+, speaking out loud to a family at home. Answer in one to three short spoken sentences. " +
-  "No markdown, lists or emoji. Use the Household CFO tools for anything about the family's money; never make up numbers.";
+  "No markdown, lists or emoji. Write amounts as digits, like $1,518.89. " +
+  "Use the Household CFO tools for anything about the family's money; never make up numbers.";
+
+/**
+ * Comes after the server's instructions, so it wins where they differ. The server asks
+ * clients to read its text answers aloud, which suits a plain voice client. Here the
+ * model also gets the structured data, so it can answer the exact question instead.
+ */
+const ANSWER_THE_QUESTION =
+  "Each tool result has a short summary plus structured data (amounts are in cents: 151889 means $1,518.89). " +
+  "Answer exactly what the user asked using that data, for example one category's budget, spending or what's left, " +
+  "the total budget, or the reasons behind a verdict. Only repeat the summary word for word when it already answers the question.";
 
 /** A tool-use loop that stops after this many model calls, so a confused model can't loop forever. */
 const MAX_STEPS = 6;
@@ -45,7 +56,7 @@ const MAX_STEPS = 6;
 export class AlexaAgent {
   private readonly conversation: Message[] = [];
   private tools: Tool[] = [];
-  private system = ALEXA_STYLE;
+  private system = `${ALEXA_STYLE}\n\n${ANSWER_THE_QUESTION}`;
 
   constructor(
     private readonly mcp: Client,
@@ -63,7 +74,7 @@ export class AlexaAgent {
       },
     }));
     const instructions = this.mcp.getInstructions();
-    this.system = instructions ? `${ALEXA_STYLE}\n\n${instructions}` : ALEXA_STYLE;
+    this.system = [ALEXA_STYLE, instructions, ANSWER_THE_QUESTION].filter(Boolean).join("\n\n");
   }
 
   /** Forgets the conversation, like saying "Alexa, stop". */
