@@ -82,7 +82,18 @@ export class AlexaAgent {
     this.conversation.length = 0;
   }
 
+    /** If anything fails mid-turn, drop that turn, so the next question starts from a valid conversation. */
   async ask(utterance: string): Promise<AlexaReply> {
+    const before = this.conversation.length;
+    try {
+      return await this.answer(utterance);
+    } catch (error) {
+      this.conversation.length = before;
+      throw error;
+    }
+  }
+
+  private async answer(utterance: string): Promise<AlexaReply> {
     this.conversation.push({ role: "user", content: [{ text: utterance }] });
     let card: Card | undefined;
 
