@@ -1,5 +1,9 @@
 # Household CFO
 
+https://github.com/user-attachments/assets/9eceab21-1445-4043-94f0-dbc1ac441523
+
+
+
 An Alexa+ MCP server for running a family's money by voice.
 
 > "Alexa, can we afford soccer camp for $240?"
